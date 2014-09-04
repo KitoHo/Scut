@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
@@ -37,31 +37,26 @@
     <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="IronPython, Version=2.7.0.40, Culture=neutral, PublicKeyToken=7f709c5b713576e1, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\Release\6.2.7.0\Lib\IronPython.dll</HintPath>
-    </Reference>
-    <Reference Include="IronPython.Modules, Version=2.7.0.40, Culture=neutral, PublicKeyToken=7f709c5b713576e1, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\Release\6.2.7.0\Lib\IronPython.Modules.dll</HintPath>
-    </Reference>
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="Microsoft.Dynamic, Version=1.1.0.20, Culture=neutral, PublicKeyToken=7f709c5b713576e1, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\Release\6.2.7.0\Lib\Microsoft.Dynamic.dll</HintPath>
+      <HintPath>..\..\Framework\Lib\Microsoft.Dynamic.dll</HintPath>
     </Reference>
     <Reference Include="Microsoft.Scripting, Version=1.1.0.20, Culture=neutral, PublicKeyToken=7f709c5b713576e1, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\Release\6.2.7.0\Lib\Microsoft.Scripting.dll</HintPath>
+      <HintPath>..\..\Framework\Lib\Microsoft.Scripting.dll</HintPath>
     </Reference>
     <Reference Include="Newtonsoft.Json">
-      <HintPath>..\..\..\Release\6.2.7.0\Lib\Newtonsoft.Json.dll</HintPath>
+      <HintPath>..\..\Framework\Lib\Newtonsoft.Json.dll</HintPath>
     </Reference>
     <Reference Include="NLog">
-      <HintPath>..\..\..\Release\6.2.7.0\Lib\NLog.dll</HintPath>
+      <HintPath>..\..\Framework\Lib\NLog.dll</HintPath>
     </Reference>
     <Reference Include="protobuf-net">
-      <HintPath>..\..\..\Release\6.2.7.0\Lib\protobuf-net.dll</HintPath>
+      <HintPath>..\..\Framework\Lib\protobuf-net.dll</HintPath>
+    </Reference>
+    <Reference Include="ServiceStack.Redis">
+      <HintPath>..\..\Framework\Lib\ServiceStack.Redis.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -72,11 +67,13 @@
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
     <Reference Include="System.Configuration" />
-    <Reference Include="ZyGames.Framework">
-      <HintPath>..\..\..\Release\6.2.7.0\Lib\ZyGames.Framework.dll</HintPath>
+    <Reference Include="ZyGames.Framework, Version=6.5.0.188, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\Framework\ZyGames.Framework\bin\Release\ZyGames.Framework.dll</HintPath>
     </Reference>
-    <Reference Include="ZyGames.Framework.Common">
-      <HintPath>..\..\..\Release\6.2.7.0\Lib\ZyGames.Framework.Common.dll</HintPath>
+    <Reference Include="ZyGames.Framework.Common, Version=6.5.0.188, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\Framework\ZyGames.Framework\bin\Release\ZyGames.Framework.Common.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>
@@ -139,10 +136,16 @@
     <Compile Include="Configuration\ZyGameBaseConfigManager.cs" />
     <Compile Include="Context\BaseUser.cs" />
     <Compile Include="Context\EncryptionManager.cs" />
-    <Compile Include="Context\GameContext.cs" />
     <Compile Include="Context\HttpRequestManager.cs" />
+    <Compile Include="Context\IUser.cs" />
     <Compile Include="Contract\ActionEnum.cs" />
     <Compile Include="Contract\ActionFactory.cs" />
+    <Compile Include="Contract\Action\LuaAction.cs" />
+    <Compile Include="Contract\GameBaseHost.cs" />
+    <Compile Include="Contract\GameHttpHost.cs" />
+    <Compile Include="Contract\RemotePackage.cs" />
+    <Compile Include="Contract\RemoteService.cs" />
+    <Compile Include="Service\ActionGetter.cs" />
     <Compile Include="Contract\Action\AndroidPayAction.cs" />
     <Compile Include="Contract\Action\AppStoreDetailAction.cs" />
     <Compile Include="Contract\Action\AppStorePayAction.cs" />
@@ -157,6 +160,7 @@
     <Compile Include="Contract\EntitySyncManger.cs" />
     <Compile Include="Contract\GameSession.cs" />
     <Compile Include="Contract\GameSocketHost.cs" />
+    <Compile Include="Contract\ActionDispatcher.cs" />
     <Compile Include="Contract\Page\RankingPage.cs">
       <SubType>ASPXCodeBehind</SubType>
     </Compile>
@@ -185,9 +189,9 @@
     <Compile Include="Pay\Section\AppStorePayElement.cs" />
     <Compile Include="Pay\Section\AppStorePaySection.cs" />
     <Compile Include="Runtime\EnvironmentSetting.cs" />
-    <Compile Include="Contract\HttpUtils.cs" />
     <Compile Include="Service\HttpGameResponse.cs" />
     <Compile Include="Service\LoginStatus.cs" />
+    <Compile Include="Service\RemoteStruct.cs" />
     <Compile Include="Service\SocketGameResponse.cs" />
     <Compile Include="Sns\AbstractLogin.cs" />
     <Compile Include="Sns\LoginDanLeV2.cs" />
@@ -210,7 +214,7 @@
     <Compile Include="Service\DataStruct.cs" />
     <Compile Include="Service\GameStruct.cs" />
     <Compile Include="Contract\HttpGet.cs" />
-    <Compile Include="Service\IGameResponse.cs" />
+    <Compile Include="Service\BaseGameResponse.cs" />
     <Compile Include="Service\MobileType.cs" />
     <Compile Include="Sns\91sdk\HttpPostManager.cs" />
     <Compile Include="Sns\91sdk\Login91sdk.cs" />

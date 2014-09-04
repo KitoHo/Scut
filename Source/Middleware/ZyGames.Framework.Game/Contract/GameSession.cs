@@ -26,12 +26,15 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Net;
 using System.Web;
+using Newtonsoft.Json;
 using ProtoBuf;
 using System.Threading;
 using System.Collections.Concurrent;
 using ZyGames.Framework.Common;
+using ZyGames.Framework.Common.Locking;
 using ZyGames.Framework.Common.Log;
 using ZyGames.Framework.Common.Serialization;
+using ZyGames.Framework.Game.Context;
 using ZyGames.Framework.Game.Runtime;
 using ZyGames.Framework.Redis;
 using ZyGames.Framework.RPC.Sockets;
@@ -46,26 +49,28 @@ namespace ZyGames.Framework.Game.Contract
     {
         private static ConcurrentDictionary<Guid, GameSession> _globalSession;
         private static ConcurrentDictionary<int, Guid> _userHash;
+        private static ConcurrentDictionary<string, Guid> _remoteHash;
         private static Timer clearTime;
         private static string sessionRedisKey = "__GLOBAL_SESSIONS";
+        private static int _isChanged;
 
         static GameSession()
         {
-            Timeout = 1200;
-            clearTime = new Timer(OnClearSession, null, new TimeSpan(0, 0, 60), new TimeSpan(0, 0, 60));
+            Timeout = 600;
+            clearTime = new Timer(OnClearSession, null, new TimeSpan(0, 0, 60), new TimeSpan(0, 0, 10));
             _globalSession = new ConcurrentDictionary<Guid, GameSession>();
             _userHash = new ConcurrentDictionary<int, Guid>();
-            LoadUnLineData();
+            _remoteHash = new ConcurrentDictionary<string, Guid>();
+            //LoadUnLineData();//不能恢复user对象
         }
 
         private static void LoadUnLineData()
         {
             try
             {
-                var client = RedisConnectionPool.Pop();
-                try
+                RedisConnectionPool.ProcessReadOnly(client =>
                 {
-                    byte[] data = client.Get<byte[]>(sessionRedisKey) ?? new byte[0];
+                    byte[] data = client.Get(sessionRedisKey) ?? new byte[0];
                     if (data.Length == 0)
                     {
                         return;
@@ -73,13 +78,14 @@ namespace ZyGames.Framework.Game.Contract
                     var temp = ProtoBufUtils.Deserialize<ConcurrentDictionary<Guid, GameSession>>(data);
                     if (temp != null)
                     {
-                        _globalSession = temp;
+                        var paris = temp.Where(p =>
+                        {
+                            p.Value.UserId = 0;//reset userid
+                            return !p.Value.CheckExpired();
+                        }).ToArray();
+                        _globalSession = new ConcurrentDictionary<Guid, GameSession>(paris);
                     }
-                }
-                finally
-                {
-                    RedisConnectionPool.Put(client);
-                }
+                });
             }
             catch (Exception er)
             {
@@ -91,16 +97,9 @@ namespace ZyGames.Framework.Game.Contract
         {
             try
             {
-                var client = RedisConnectionPool.Pop();
-                try
-                {
-                    byte[] data = ProtoBufUtils.Serialize(_globalSession);
-                    client.Set(sessionRedisKey, data);
-                }
-                finally
-                {
-                    RedisConnectionPool.Put(client);
-                }
+                //不能恢复user对象 不需要存储
+                //byte[] data = ProtoBufUtils.Serialize(_globalSession);
+                //RedisConnectionPool.Process(client => client.Set(sessionRedisKey, data));
             }
             catch (Exception er)
             {
@@ -130,19 +129,23 @@ namespace ZyGames.Framework.Game.Contract
                 foreach (var pair in _globalSession)
                 {
                     var session = pair.Value;
-                    if ((session.IsSocket && !session.Connected) ||
-                        session.LastActivityTime < MathUtils.Now.AddSeconds(-Timeout))
+                    if (session != null && session.CheckExpired())
                     {
-                        pair.Value.Close();
-                        //todo trace
+                        session.Reset();
+                        //todo session
                         TraceLog.ReleaseWriteDebug("User {0} sessionId{1} is expire {2}({3}sec)",
                             session.UserId,
                             session.SessionId,
                             session.LastActivityTime,
                             Timeout);
+
                     }
                 }
-                SaveTo();
+                if (_isChanged == 1)
+                {
+                    SaveTo();
+                    Interlocked.Exchange(ref _isChanged, 0);
+                }
             }
             catch (Exception er)
             {
@@ -199,6 +202,7 @@ namespace ZyGames.Framework.Game.Contract
                 throw new ArgumentOutOfRangeException("param is error");
             }
             _globalSession[keyCode] = session;
+            OnChangedSave();
             return session;
         }
 
@@ -220,7 +224,10 @@ namespace ZyGames.Framework.Game.Contract
                 session._exSocket = socket;
                 session._sendCallback = sendCallback;
                 GameSession temp;
-                _globalSession.TryRemove(newSessionKey, out temp);
+                if (_globalSession.TryRemove(newSessionKey, out temp))
+                {
+                    OnChangedSave();
+                }
             }
         }
 
@@ -235,6 +242,15 @@ namespace ZyGames.Framework.Game.Contract
             return _userHash.TryGetValue(userId, out val) ? Get(val) : null;
         }
 
+        internal static Guid GetUserBindSid(int userId)
+        {
+            Guid val;
+            if (_userHash.TryGetValue(userId, out val))
+            {
+                return val;
+            }
+            return Guid.Empty;
+        }
         /// <summary>
         /// Get session by sessionid.
         /// </summary>
@@ -275,25 +291,56 @@ namespace ZyGames.Framework.Game.Contract
             return _globalSession.Values.ToList();
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="proxyId"></param>
+        /// <returns></returns>
+        public static GameSession GetRemote(string proxyId)
+        {
+            Guid val;
+            return _remoteHash.TryGetValue(proxyId, out val) ? Get(val) : null;
+        }
+        /// <summary>
+        /// Get remote all
+        /// </summary>
+        /// <returns></returns>
+        public static List<GameSession> GetRemoteAll()
+        {
+            return _remoteHash.Select(pair => Get(pair.Value)).ToList();
+        }
+
         private string _remoteAddress;
         private int _isInSession;
-        private readonly object _request;
         private ExSocket _exSocket;
         private Action<ExSocket, byte[], int, int> _sendCallback;
+
+        private readonly IMonitorStrategy _monitorLock;
+
+        /// <summary>
+        /// 获得锁策略
+        /// </summary>
+        [JsonIgnore]
+        public IMonitorStrategy MonitorLock
+        {
+            get { return _monitorLock; }
+        }
+
 
         /// <summary>
         /// init proto deserialize use
         /// </summary>
         private GameSession()
         {
+            _monitorLock = new MonitorLockStrategy();
+            Refresh();
         }
 
         private GameSession(Guid keyCode, object request)
+            : this()
         {
             KeyCode = keyCode;
             SessionId = GenerateSid(KeyCode);
-            LastActivityTime = DateTime.Now;
-            _request = request;
             if (request is HttpRequest)
             {
                 HttpRequest req = ((HttpRequest)request);
@@ -323,46 +370,127 @@ namespace ZyGames.Framework.Game.Contract
         private void InitSocket(ExSocket exSocket, Action<ExSocket, byte[], int, int> sendCallback)
         {
             _exSocket = exSocket;
+            _remoteAddress = _exSocket.RemoteEndPoint.ToString();
             _sendCallback = sendCallback;
         }
 
-        /// <summary>
-        /// bind Identity userid
-        /// </summary>
-        public void BindIdentity(int userId)
+        internal void Refresh()
         {
+            LastActivityTime = DateTime.Now;
+            if (User != null)
+            {
+                User.RefleshOnlineDate();
+            }
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="user"></param>
+        public void Bind(IUser user)
+        {
+            int userId = user.GetUserId();
+            if (userId > 0)
+            {
+                //解除UserId与前一次的Session连接对象绑定
+                Guid sid;
+                if (_userHash.TryGetValue(userId, out sid))
+                {
+                    var session = Get(sid);
+                    if (session != null)
+                    {
+                        session.UnBind();
+                    }
+                }
+            }
+            _userHash[userId] = KeyCode;
             UserId = userId;
+            User = user;
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public void UnBind()
+        {
+            User = null;
+            UserId = 0;
+            OldSessionId = SessionId;
+        }
+
+        /// <summary>
+        /// Is authorized.
+        /// </summary>
+        [JsonIgnore]
+        public bool IsAuthorized
+        {
+            get { return User != null && UserId > 0; }
         }
 
         /// <summary>
         /// Is proxy server session
         /// </summary>
+        [JsonIgnore]
         public bool IsProxyServer
         {
             get { return ProxySid != Guid.Empty && UserId == 0; }
         }
 
         /// <summary>
+        /// 
+        /// </summary>
+        [JsonIgnore]
+        public bool IsRemote
+        {
+            get { return !string.IsNullOrEmpty(ProxyId); }
+        }
+        /// <summary>
         /// Close
         /// </summary>
         public void Close()
         {
             GameSession session;
-            if (_globalSession.TryRemove(KeyCode, out session))
+            if (_globalSession.TryGetValue(KeyCode, out session) && session._exSocket != null)
             {
-                try
-                {
-                    session._exSocket.WorkSocket.Close();
-                }
-                catch { }
+                //设置Socket为Closed的状态, 并未将物理连接马上中断
+                session._exSocket.IsClosed = true;
+            }
+        }
+
+        private bool CheckExpired()
+        {
+            return LastActivityTime < MathUtils.Now.AddSeconds(-Timeout);
+        }
+
+        private void Reset()
+        {
+            IsTimeout = true;
+            GameSession session;
+            _globalSession.TryRemove(KeyCode, out session);
+            if (_exSocket != null)
+            {
+                //设置Socket为Closed的状态, 并未将物理连接马上中断
+                _exSocket.IsClosed = true;
             }
             Guid code;
-            _userHash.TryRemove(UserId, out code);
+            if (_userHash.TryRemove(UserId, out code))
+            {
+                UnBind();
+            }
+
+            if (!string.IsNullOrEmpty(ProxyId)) _remoteHash.TryRemove(ProxyId, out code);
+        }
+
+
+        private static void OnChangedSave()
+        {
+            Interlocked.Exchange(ref _isChanged, 1);
         }
 
         /// <summary>
         /// Remote end address
         /// </summary>
+        [JsonIgnore]
         public string EndAddress
         {
             get
@@ -388,27 +516,20 @@ namespace ZyGames.Framework.Game.Contract
         [ProtoMember(2)]
         public string SessionId { get; private set; }
 
-        private int _userId;
-
         /// <summary>
         /// login UserId
         /// </summary>
         [ProtoMember(3)]
-        public int UserId
-        {
-            get { return _userId; }
-            private set
-            {
-                _userId = value;
-                if (_userId > 0)
-                {
-                    _userHash[_userId] = KeyCode;
-                }
-            }
-        }
+        public int UserId { get; private set; }
 
         /// <summary>
-        /// Gets or sets ssid identifier by the server proxy.
+        /// User
+        /// </summary>
+        [JsonIgnore]
+        public IUser User { get; private set; }
+
+        /// <summary>
+        /// 远程代理客户端的会话ID
         /// </summary>
         [ProtoMember(4)]
         public Guid ProxySid { get; internal set; }
@@ -420,15 +541,50 @@ namespace ZyGames.Framework.Game.Contract
         public DateTime LastActivityTime { get; internal set; }
 
         /// <summary>
+        /// 是否会话超时
+        /// </summary>
+        [JsonIgnore]
+        public bool IsTimeout { get; set; }
+
+        private string _proxyId;
+
+        /// <summary>
+        /// 远程代理客户端的标识ID
+        /// </summary>
+        [ProtoMember(6)]
+        public string ProxyId
+        {
+            get { return _proxyId; }
+            set
+            {
+                _proxyId = value;
+                if (!string.IsNullOrEmpty(_proxyId))
+                {
+                    _remoteHash[_proxyId] = KeyCode;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 是否标识关闭状态
+        /// </summary>
+        [JsonIgnore]
+        public bool IsClosed
+        {
+            get { return _exSocket != null && _exSocket.IsClosed; }
+        }
+
+        /// <summary>
         /// 是否已连接
         /// </summary>
+        [JsonIgnore]
         public bool Connected
         {
             get
             {
                 try
                 {
-                    return _exSocket != null ? _exSocket.WorkSocket.Connected : false;
+                    return _exSocket != null && _exSocket.Connected;
                 }
                 catch
                 {
@@ -440,6 +596,7 @@ namespace ZyGames.Framework.Game.Contract
         /// <summary>
         /// is socket
         /// </summary>
+        [JsonIgnore]
         public bool IsSocket
         {
             get { return _exSocket != null; }
@@ -451,8 +608,16 @@ namespace ZyGames.Framework.Game.Contract
         /// <param name="data"></param>
         /// <param name="offset"></param>
         /// <param name="count"></param>
-        public void PostSend(byte[] data, int offset, int count)
+        private void PostSend(byte[] data, int offset, int count)
         {
+            if (!IsSocket)
+            {
+                throw new Exception("Session does not support the push message");
+            }
+            if (data == null || data.Length == 0)
+            {
+                return;
+            }
             _sendCallback(_exSocket, data, offset, count);
         }
 
@@ -467,7 +632,10 @@ namespace ZyGames.Framework.Game.Contract
         {
             if (Connected)
             {
-                data = CheckAdditionalHead(data, ProxySid);
+                if (!IsRemote)
+                {
+                    data = CheckAdditionalHead(data, ProxySid);
+                }
                 PostSend(data, 0, data.Length);
                 return true;
             }
@@ -500,5 +668,6 @@ namespace ZyGames.Framework.Game.Contract
         {
             Interlocked.Exchange(ref _isInSession, 0);
         }
+
     }
 }

@@ -39,14 +39,6 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\Lib\ICSharpCode.SharpZipLib.dll</HintPath>
     </Reference>
-    <Reference Include="IronPython, Version=2.7.0.40, Culture=neutral, PublicKeyToken=7f709c5b713576e1, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\Lib\IronPython.dll</HintPath>
-    </Reference>
-    <Reference Include="IronPython.Modules, Version=2.7.0.40, Culture=neutral, PublicKeyToken=7f709c5b713576e1, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\Lib\IronPython.Modules.dll</HintPath>
-    </Reference>
     <Reference Include="Microsoft.Dynamic, Version=1.1.0.20, Culture=neutral, PublicKeyToken=7f709c5b713576e1, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\Lib\Microsoft.Dynamic.dll</HintPath>
@@ -107,7 +99,6 @@
     </Compile>
     <Compile Include="Cache\Generic\BaseCacheStruct.cs" />
     <Compile Include="Cache\Generic\BaseCollection.cs" />
-    <Compile Include="Cache\Generic\CacheChangeManager.cs" />
     <Compile Include="Cache\Generic\CacheCollection.cs" />
     <Compile Include="Cache\Generic\CacheContainer.cs" />
     <Compile Include="Cache\Generic\CacheDictionary.cs" />
@@ -118,6 +109,7 @@
     <Compile Include="Cache\Generic\CachePeriod.cs" />
     <Compile Include="Cache\Generic\CacheQueue.cs" />
     <Compile Include="Cache\Generic\CacheSetting.cs" />
+    <Compile Include="Cache\Generic\DataSyncQueueManager.cs" />
     <Compile Include="Cache\Generic\DefaultCacheStruct.cs" />
     <Compile Include="Cache\Generic\EntityContainer.cs" />
     <Compile Include="Cache\Generic\IDataContainer.cs" />
@@ -129,9 +121,9 @@
     <Compile Include="Cache\Generic\ReadonlyCacheCollection.cs" />
     <Compile Include="Cache\Generic\ShareCacheStruct.cs" />
     <Compile Include="Collection\Generic\DictionaryExtend.cs" />
-    <Compile Include="Collection\Generic\FreeList.cs" />
     <Compile Include="Collection\Generic\GroupList.cs" />
     <Compile Include="Collection\Generic\HashtableExtend.cs" />
+    <Compile Include="Collection\Generic\ListExtend.cs" />
     <Compile Include="Data\CommandFilter.cs" />
     <Compile Include="Data\CommandMode.cs" />
     <Compile Include="Data\CommandStruct.cs" />
@@ -192,9 +184,8 @@
     <Compile Include="Plugin\Test\CaseEventArgs.cs" />
     <Compile Include="Plugin\Test\CaseManager.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Redis\RedisConnection.cs" />
     <Compile Include="Redis\RedisConnectionPool.cs" />
-    <Compile Include="Redis\RedisManager.cs" />
+    <Compile Include="Redis\RedisPoolSetting.cs" />
     <Compile Include="RPC\IO\BufferReader.cs" />
     <Compile Include="RPC\IO\BufferUtils.cs" />
     <Compile Include="RPC\IO\ConnectType.cs" />
@@ -209,6 +200,9 @@
     <Compile Include="RPC\IO\RequestParam.cs" />
     <Compile Include="RPC\IO\Sender.cs" />
     <Compile Include="RPC\IO\SignUtils.cs" />
+    <Compile Include="RPC\Service\HttpRemoteClient.cs" />
+    <Compile Include="RPC\Service\RemoteClient.cs" />
+    <Compile Include="RPC\Service\SocketRemoteClient.cs" />
     <Compile Include="RPC\Sockets\BufferManager.cs" />
     <Compile Include="RPC\Sockets\ClientSocket.cs" />
     <Compile Include="RPC\Sockets\ClientSocketSettings.cs" />
@@ -246,12 +240,19 @@
     <Compile Include="RPC\Sockets\Threading\WorkItemsQueue.cs" />
     <Compile Include="RPC\Sockets\ThreadSafeStack.cs" />
     <Compile Include="Script\CSharpFileInfo.cs" />
-    <Compile Include="Script\FileWatcherInfo.cs" />
+    <Compile Include="Script\CSharpRuntimeScope.cs" />
+    <Compile Include="Script\LuaMethodAttribute.cs" />
+    <Compile Include="Script\LuaRuntimeScope.cs" />
+    <Compile Include="Script\PythonRuntimeScope.cs" />
+    <Compile Include="Script\ScriptDomainContext.cs" />
     <Compile Include="Script\IMainScript.cs" />
     <Compile Include="Script\PythonFileInfo.cs" />
     <Compile Include="Script\ScriptCompiler.cs" />
     <Compile Include="Script\ScriptEngines.cs" />
     <Compile Include="Script\ScriptFileInfo.cs" />
+    <Compile Include="Script\ScriptRuntimeDomain.cs" />
+    <Compile Include="Script\ScriptRuntimeScope.cs" />
+    <Compile Include="Script\ScriptSettupInfo.cs" />
     <Compile Include="SyncThreading\SyncHelper.cs" />
   </ItemGroup>
   <ItemGroup>

@@ -24,7 +24,6 @@ THE SOFTWARE.
 using System;
 using System.Collections.Generic;
 using System.Data;
-using ZyGames.Framework.Common;
 using ZyGames.Framework.Common.Log;
 using MySql.Data.MySqlClient;
 
@@ -56,10 +55,11 @@ namespace ZyGames.Framework.Data.MySql
             {
                 paramName = paramName ?? string.Empty;
 
-                if (!MathUtils.IsMachVarName(paramName))
-                {
-                    throw new ArgumentOutOfRangeException("paramName", "参数名格式不正确");
-                }
+                //modify reason:验证花时比较大
+                //if (!MathUtils.IsMachVarName(paramName))
+                //{
+                //    throw new ArgumentOutOfRangeException("paramName", "参数名格式不正确");
+                //}
                 if (size > 0)
                 {
                     sqlParameter = new MySqlParameter(FormatParamName(paramName), dbType, size);
@@ -114,7 +114,7 @@ namespace ZyGames.Framework.Data.MySql
             }
             else if (value is Byte[])
             {
-                return MySqlDbType.Binary;
+                return MySqlDbType.LongBlob;
             }
             else if (value is long)
             {

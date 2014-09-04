@@ -43,6 +43,11 @@ namespace ZyGames.Framework.Model
         /// <summary>
         /// 
         /// </summary>
+        internal protected const char KeyCodeJoinChar = '-';
+
+        /// <summary>
+        /// 
+        /// </summary>
         protected const int DefIdentityId = 10000;
         /// <summary>
         /// 存储改变的属性集合
@@ -55,6 +60,25 @@ namespace ZyGames.Framework.Model
 
         private ObjectAccessor _typeAccessor;
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="keyCode"></param>
+        /// <returns></returns>
+        public static string EncodeKeyCode(string keyCode)
+        {
+            return keyCode.Replace(KeyCodeJoinChar.ToString(), "%45");
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="keyCode"></param>
+        /// <returns></returns>
+        public static string DecodeKeyCode(string keyCode)
+        {
+            return keyCode.Replace("%45", KeyCodeJoinChar.ToString());
+        }
 
         /// <summary>
         /// 
@@ -204,7 +228,9 @@ namespace ZyGames.Framework.Model
             }
         }
 
-
+        /// <summary>
+        /// 
+        /// </summary>
         protected bool _isDelete;
 
         /// <summary>
@@ -401,9 +427,9 @@ namespace ZyGames.Framework.Model
             {
                 if (value.Length > 0)
                 {
-                    value += "-";
+                    value += KeyCodeJoinChar;
                 }
-                value += key.ToNotNullString();
+                value += EncodeKeyCode(key.ToNotNullString());
             }
             return value;
         }
@@ -422,13 +448,13 @@ namespace ZyGames.Framework.Model
                 {
                     if (value.Length > 0)
                     {
-                        value += "-";
+                        value += KeyCodeJoinChar;
                     }
-                    value += GetPropertyValue(key).ToNotNullString();
+                    value += EncodeKeyCode(GetPropertyValue(key).ToNotNullString());
                 }
                 if (string.IsNullOrEmpty(value))
                 {
-                    TraceLog.WriteError("Entity {0} primary key is empty.", entitySchema.Name);
+                    TraceLog.WriteError("Entity {0} primary key is empty.", entitySchema.EntityName);
                 }
             }
 
@@ -720,5 +746,93 @@ namespace ZyGames.Framework.Model
             base.Dispose(disposing);
         }
 
+        /// <summary>
+        /// Set key from keycode
+        /// </summary>
+        /// <param name="keyCode"></param>
+        /// <param name="typeName"></param>
+        internal void SetKeyValue(string keyCode, string typeName)
+        {
+            SchemaTable schemaTable;
+            if (EntitySchemaSet.TryGet(typeName, out schemaTable))
+            {
+                string[] keyValues = DecodeKeyCode(keyCode).Split(KeyCodeJoinChar);
+                for (int i = 0; i < schemaTable.Keys.Length; i++)
+                {
+                    string columnName = schemaTable.Keys[i];
+                    var colAttr = schemaTable[columnName];
+                    if (i < keyValues.Length && colAttr != null)
+                    {
+                        object value = ParseValueType(keyValues[i], colAttr.ColumnType);
+                        SetPropertyValue(columnName, value);
+                    }
+                }
+            }
+        }
+
+        internal object ParseValueType(object value, Type columnType)
+        {
+            if (columnType == typeof(Int64))
+            {
+                return value.ToLong();
+            }
+            if (columnType == typeof(Int32))
+            {
+                return value.ToInt();
+            }
+            if (columnType == typeof(Int16))
+            {
+                return value.ToShort();
+            }
+            if (columnType == typeof(string))
+            {
+                return value.ToNotNullString();
+            }
+            if (columnType == typeof(decimal))
+            {
+                return value.ToDecimal();
+            }
+            if (columnType == typeof(double))
+            {
+                return value.ToDouble();
+            }
+            if (columnType == typeof(float))
+            {
+                return value.ToFloat();
+            }
+            if (columnType == typeof(bool))
+            {
+                return value.ToBool();
+            }
+            if (columnType == typeof(byte))
+            {
+                return value.ToByte();
+            }
+            if (columnType == typeof(DateTime))
+            {
+                return value.ToDateTime();
+            }
+            if (columnType == typeof(Guid))
+            {
+                return (Guid)value;
+            }
+            if (columnType.IsEnum)
+            {
+                return value.ToEnum(columnType);
+            }
+            if (columnType == typeof(UInt64))
+            {
+                return value.ToUInt64();
+            }
+            if (columnType == typeof(UInt32))
+            {
+                return value.ToUInt32();
+            }
+            if (columnType == typeof(UInt16))
+            {
+                return value.ToUInt16();
+            }
+            return value;
+        }
     }
 }

@@ -104,6 +104,8 @@ namespace ZyGames.Framework.Common.Serialization
                     return _binaryValue;
                 if (_charsValue != null)
                     return _charsValue;
+                if (_binaryArrayValue != null)
+                    return _binaryArrayValue;
                 return _stringValue;
             }
             set
@@ -120,6 +122,12 @@ namespace ZyGames.Framework.Common.Serialization
                     _intValue = (int)value;
                 else if (value is long)
                     _longValue = (long)value;
+                else if (value is ushort)
+                    _ushortValue = (ushort)value;
+                else if (value is uint)
+                    _uintValue = (uint)value;
+                else if (value is ulong)
+                    _ulongValue = (ulong)value;
                 else if (value is float)
                     _floatValue = (float)value;
                 else if (value is decimal)
@@ -136,6 +144,8 @@ namespace ZyGames.Framework.Common.Serialization
                     _binaryValue = (byte[])value;
                 else if (value is char[])
                     _charsValue = (char[])value;
+                else if (value is byte[][])
+                    _binaryArrayValue = (byte[][])value;
                 else if (value == null)
                 {
                     _isnullValue = true;
@@ -189,8 +199,19 @@ namespace ZyGames.Framework.Common.Serialization
 
         [ProtoMember(14)]
         private bool? _isnullValue;
+
+        [ProtoMember(15)]
+        private byte[][] _binaryArrayValue;
         // etc
 
+        [ProtoMember(16)]
+        private ushort? _ushortValue;
+
+        [ProtoMember(17)]
+        private uint? _uintValue;
+
+        [ProtoMember(18)]
+        private ulong? _ulongValue;
 
 
         #region ISerializable Members

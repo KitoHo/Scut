@@ -22,9 +22,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
 
-using System;
-using MySql.Data.MySqlClient;
-
 namespace ZyGames.Framework.Data.MySql
 {
     /// <summary>
@@ -48,13 +45,6 @@ namespace ZyGames.Framework.Data.MySql
         {
             AddParam(MySqlParamHelper.MakeInParam(paramName, value));
         }
-		/// <summary>
-		/// 
-		/// </summary>
-		/// <param name="fieldName"></param>
-		/// <param name="compareChar"></param>
-		/// <param name="paramName"></param>
-		/// <returns>The expression.</returns>
 		/// <summary>
 		/// 
 		/// </summary>

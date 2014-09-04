@@ -21,7 +21,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
-using System;
+
 using ZyGames.Framework.Model;
 using ZyGames.Framework.Net.Redis;
 using ZyGames.Framework.Net.Sql;
@@ -67,7 +67,7 @@ namespace ZyGames.Framework.Net
 
 
         #region Redis
-        
+
         /// <summary>
         /// 
         /// </summary>
@@ -75,7 +75,7 @@ namespace ZyGames.Framework.Net
         /// <returns></returns>
         public static IDataSender GetRedisSender(string redisKey)
         {
-            return new RedisDataSender(redisKey);
+            return new RedisDataSender();
         }
         /// <summary>
         /// 
@@ -85,7 +85,7 @@ namespace ZyGames.Framework.Net
         /// <returns></returns>
         public static IDataReceiver GetRedisGetter(SchemaTable schema, string redisKey)
         {
-            return new RedisDataGetter(redisKey);
+            return new RedisDataGetter(redisKey, schema);
         }
         #endregion
     }

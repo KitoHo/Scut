@@ -32,16 +32,19 @@ namespace ZyGames.Framework.Game.Service
     /// <summary>
     /// 
     /// </summary>
-    public class SocketGameResponse : IGameResponse
+    public class SocketGameResponse : BaseGameResponse
     {
         static SocketGameResponse()
         {
-            MessageStructure.EnableGzip = GameEnvironment.Setting.ActionEnableGZip;
-            MessageStructure.EnableGzipMinByte = GameEnvironment.Setting.ActionGZipOutLength;
+            var setting = GameEnvironment.Setting;
+            if (setting != null)
+            {
+                MessageStructure.EnableGzip = setting.ActionEnableGZip;
+                MessageStructure.EnableGzipMinByte = setting.ActionGZipOutLength;
+            }
         }
 
         private MessageStructure _buffers;
-
         /// <summary>
         /// 
         /// </summary>
@@ -54,7 +57,7 @@ namespace ZyGames.Framework.Game.Service
         /// 
         /// </summary>
         /// <param name="buffer"></param>
-        public void BinaryWrite(byte[] buffer)
+        public override void BinaryWrite(byte[] buffer)
         {
             DoWrite(buffer);
         }
@@ -62,7 +65,7 @@ namespace ZyGames.Framework.Game.Service
         /// 
         /// </summary>
         /// <param name="buffer"></param>
-        public void Write(byte[] buffer)
+        public override void Write(byte[] buffer)
         {
             DoWrite(buffer);
         }

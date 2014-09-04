@@ -25,7 +25,6 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
-using ZyGames.Framework.Common;
 using ZyGames.Framework.Common.Log;
 
 namespace ZyGames.Framework.Data.Sql
@@ -56,11 +55,11 @@ namespace ZyGames.Framework.Data.Sql
             try
             {
                 paramName = paramName ?? string.Empty;
-
-                if (!MathUtils.IsMachVarName(paramName))
-                {
-                    throw new ArgumentOutOfRangeException("paramName", "参数名格式不正确");
-                }
+                //modify reason:验证花时比较大
+                //if (!MathUtils.IsMachVarName(paramName))
+                //{
+                //    throw new ArgumentOutOfRangeException("paramName", "参数名格式不正确");
+                //}
                 if (size > 0)
                 {
                     sqlParameter = new SqlParameter(FormatParamName(paramName), dbType, size);
@@ -125,7 +124,7 @@ namespace ZyGames.Framework.Data.Sql
             }
             else if (value is Byte[])
             {
-                return SqlDbType.Binary;
+                return SqlDbType.Image;
             }
             else if (value is long)
             {

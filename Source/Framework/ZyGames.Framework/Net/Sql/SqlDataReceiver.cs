@@ -99,7 +99,8 @@ namespace ZyGames.Framework.Net.Sql
                     TraceLog.WriteError("The {0} schema config is empty.", typeof(T).FullName);
                     return null;
                 }
-                if (string.IsNullOrEmpty(_schema.Name))
+                string tableName = _schema.GetTableName();
+                if (string.IsNullOrEmpty(tableName))
                 {
                     TraceLog.WriteError("The {0} schema table name is empty.", _schema.EntityType.FullName);
                     return null;
@@ -111,7 +112,7 @@ namespace ZyGames.Framework.Net.Sql
                     TraceLog.WriteError("The {0} ConnectKey:{1} is empty.", _schema.EntityType.FullName, _schema.ConnectKey);
                     return null;
                 }
-                var command = dbprovider.CreateCommandStruct(_schema.Name, CommandMode.Inquiry);
+                var command = dbprovider.CreateCommandStruct(tableName, CommandMode.Inquiry);
                 var columns = _schema.GetColumnNames();
                 command.Columns = string.Join(",", columns);
                 command.OrderBy = (string.IsNullOrEmpty(_filter.OrderColumn) ? _schema.OrderColumn : _filter.OrderColumn) ?? "";
@@ -139,15 +140,7 @@ namespace ZyGames.Framework.Net.Sql
 
                 command.Parser();
                 sql = command.Sql;
-                try
-                {
-                    return dbprovider.ExecuteReader(CommandType.Text, command.Sql, command.Parameters);
-                }
-                catch (Exception)
-                {
-                    //重执行一次
-                    return dbprovider.ExecuteReader(CommandType.Text, command.Sql, command.Parameters);
-                }
+                return dbprovider.ExecuteReader(CommandType.Text, command.Sql, command.Parameters);
             }
             catch (Exception ex)
             {
@@ -193,35 +186,17 @@ namespace ZyGames.Framework.Net.Sql
                     continue;
                 }
                 object fieldValue = null;
-                if (fieldAttr.IsJson)
+                if (fieldAttr.IsSerialized)
                 {
                     var value = reader[columnName];
-                    if (fieldAttr.ColumnType.IsSubclassOf(typeof(Array)))
+                    //指定序列化方式
+                    if (fieldAttr.DbType == ColumnDbType.LongBlob || fieldAttr.DbType == ColumnDbType.Blob)
                     {
-                        value = value.ToString().StartsWith("[") ? value : "[" + value + "]";
+                        fieldValue = DeserializeBinaryObject(schemaTable, entity, value, fieldAttr, columnName);
                     }
-                    try
+                    else
                     {
-                        string tempValue = value.ToNotNullString();
-                        if (!string.IsNullOrEmpty(fieldAttr.JsonDateTimeFormat) &&
-                            tempValue.IndexOf(@"\/Date(") == -1)
-                        {
-                            fieldValue = JsonUtils.DeserializeCustom(tempValue, fieldAttr.ColumnType, fieldAttr.JsonDateTimeFormat);
-                        }
-                        else
-                        {
-                            fieldValue = JsonUtils.Deserialize(tempValue, fieldAttr.ColumnType);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        TraceLog.WriteError("Table:{0} key:{1} column:{2} deserialize json error:{3} to {4}\r\nException:{5}",
-                            schemaTable.Name,
-                            entity.GetKeyCode(),
-                            columnName,
-                            fieldValue,
-                            fieldAttr.ColumnType.FullName,
-                            ex);
+                        fieldValue = DeserializeJsonObject(schemaTable, entity, value, fieldAttr, columnName);
                     }
                     if (fieldValue is EntityChangeEvent)
                     {
@@ -232,11 +207,11 @@ namespace ZyGames.Framework.Net.Sql
                 {
                     try
                     {
-                        fieldValue = ParseValueType(reader[columnName], fieldAttr.ColumnType);
+                        fieldValue = entity.ParseValueType(reader[columnName], fieldAttr.ColumnType);
                     }
                     catch (Exception ex)
                     {
-                        TraceLog.WriteError("Table:{0} column:{1} parse value error:\r\n{0}", schemaTable.Name, columnName, ex);
+                        TraceLog.WriteError("Table:{0} column:{1} parse value error:\r\n{0}", schemaTable.EntityName, columnName, ex);
                     }
                 }
                 if (fieldAttr.CanWrite)
@@ -250,45 +225,60 @@ namespace ZyGames.Framework.Net.Sql
             }
         }
 
-        private object ParseValueType(object value, Type columnType)
+        private object DeserializeBinaryObject(SchemaTable schemaTable, AbstractEntity entity, object value, SchemaColumn fieldAttr, string columnName)
         {
-            if (columnType == typeof(int))
+            try
             {
-                return value.ToInt();
+                if (value is byte[])
+                {
+                    byte[] buffer = value as byte[];
+                    return ProtoBufUtils.Deserialize(buffer, fieldAttr.ColumnType);
+                }
+                throw new Exception("value is not byte[] type.");
             }
-            if (columnType == typeof(string))
+            catch (Exception ex)
             {
-                return value.ToNotNullString();
+                TraceLog.WriteError("Table:{0} key:{1} column:{2} deserialize binary error:byte[] to {3}\r\nException:{4}",
+                    schemaTable.EntityName,
+                    entity.GetKeyCode(),
+                    columnName,
+                    fieldAttr.ColumnType.FullName,
+                    ex);
             }
-            if (columnType == typeof(decimal))
+            return null;
+        }
+
+        private static object DeserializeJsonObject(SchemaTable schemaTable, AbstractEntity entity, object value,
+            SchemaColumn fieldAttr, string columnName)
+        {
+            try
             {
-                return value.ToDecimal();
+                if (fieldAttr.ColumnType.IsSubclassOf(typeof(Array)))
+                {
+                    value = value.ToString().StartsWith("[") ? value : "[" + value + "]";
+                }
+                string tempValue = value.ToNotNullString();
+                if (!string.IsNullOrEmpty(fieldAttr.JsonDateTimeFormat) &&
+                    tempValue.IndexOf(@"\/Date(") == -1)
+                {
+                    return JsonUtils.DeserializeCustom(tempValue, fieldAttr.ColumnType, fieldAttr.JsonDateTimeFormat);
+                }
+                else
+                {
+                    return JsonUtils.Deserialize(tempValue, fieldAttr.ColumnType);
+                }
             }
-            if (columnType == typeof(double))
+            catch (Exception ex)
             {
-                return value.ToDouble();
+                TraceLog.WriteError("Table:{0} key:{1} column:{2} deserialize json error:{3} to {4}\r\nException:{5}",
+                    schemaTable.EntityName,
+                    entity.GetKeyCode(),
+                    columnName,
+                    value,
+                    fieldAttr.ColumnType.FullName,
+                    ex);
             }
-            if (columnType == typeof(bool))
-            {
-                return value.ToBool();
-            }
-            if (columnType == typeof(byte))
-            {
-                return value.ToByte();
-            }
-            if (columnType == typeof(DateTime))
-            {
-                return value.ToDateTime();
-            }
-            if (columnType == typeof(Guid))
-            {
-                return (Guid)value;
-            }
-            if (columnType.IsEnum)
-            {
-                return value.ToEnum(columnType);
-            }
-            return value;
+            return null;
         }
     }
 }

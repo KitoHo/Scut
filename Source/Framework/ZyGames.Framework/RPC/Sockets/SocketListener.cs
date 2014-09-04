@@ -69,6 +69,7 @@ namespace ZyGames.Framework.RPC.Sockets
                 DataReceived(this, e);
             }
         }
+
         #endregion
 
         Logger logger = LogManager.GetLogger("SocketListener");
@@ -82,6 +83,8 @@ namespace ZyGames.Framework.RPC.Sockets
         ThreadSafeStack<SocketAsyncEventArgs> acceptEventArgsPool;
         ThreadSafeStack<SocketAsyncEventArgs> ioEventArgsPool;
         Timer expireTimer;
+        private bool _isStart;
+
         /// <summary>
         /// Gets the connections.
         /// </summary>
@@ -177,6 +180,7 @@ namespace ZyGames.Framework.RPC.Sockets
             listenSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             listenSocket.Bind(this.socketSettings.LocalEndPoint);
             listenSocket.Listen(socketSettings.Backlog);
+            _isStart = true;
             PostAccept();
         }
 
@@ -200,6 +204,10 @@ namespace ZyGames.Framework.RPC.Sockets
             }
 
             this.maxConnectionsEnforcer.WaitOne();
+            if (!_isStart)
+            {
+                return;
+            }
             bool willRaiseEvent = listenSocket.AcceptAsync(acceptEventArgs);
             if (!willRaiseEvent)
             {
@@ -215,7 +223,7 @@ namespace ZyGames.Framework.RPC.Sockets
             }
             catch (Exception ex)
             {
-                logger.Error("Accept_Completed", ex);
+                logger.Error(string.Format("AcceptCompleted method error:{0}", ex));
 
                 if (acceptEventArgs.AcceptSocket != null)
                 {
@@ -246,13 +254,14 @@ namespace ZyGames.Framework.RPC.Sockets
                         throw new ArgumentException("The last operation completed on the socket was not a receive or send");
                 }
             }
-            catch (ObjectDisposedException)
+            catch (ObjectDisposedException error)
             {
+                logger.Error("IO_Completed error", error);
                 ReleaseIOEventArgs(ioEventArgs);
             }
             catch (Exception ex)
             {
-                logger.Error("IO_Completed", ex);
+                logger.Error("IO_Completed unkown error", ex);
             }
         }
 
@@ -292,9 +301,14 @@ namespace ZyGames.Framework.RPC.Sockets
 
         private void ReleaseIOEventArgs(SocketAsyncEventArgs ioEventArgs)
         {
+            if (ioEventArgs == null) return;
+
             var dataToken = (DataToken)ioEventArgs.UserToken;
-            dataToken.Reset(true);
-            dataToken.Socket = null;
+            if (dataToken != null)
+            {
+                dataToken.Reset(true);
+                dataToken.Socket = null;
+            }
             ioEventArgs.AcceptSocket = null;
             ioEventArgsPool.Push(ioEventArgs);
         }
@@ -377,14 +391,7 @@ namespace ZyGames.Framework.RPC.Sockets
             } while (remainingBytesToProcess != 0);
             #endregion
 
-            if (needPostAnother)
-            {
-                if (dataToken.prefixBytesDone == 4 && dataToken.IsMessageReady)
-                    dataToken.Reset(true);
-                dataToken.bufferSkip = 0;
-                PostReceive(ioEventArgs);
-            }
-
+            //modify reason:数据包接收事件触发乱序
             foreach (var m in msgs)
             {
                 try
@@ -394,6 +401,21 @@ namespace ZyGames.Framework.RPC.Sockets
                 catch (Exception ex)
                 {
                     TraceLog.WriteError("OnDataReceived error:{0}", ex);
+                }
+            }
+            if (needPostAnother)
+            {
+                //继续处理下个请求包
+                if (dataToken.prefixBytesDone == 4 && dataToken.IsMessageReady)
+                {
+                    dataToken.Reset(true);
+                }
+                dataToken.bufferSkip = 0;
+                PostReceive(ioEventArgs);
+                //是否需要关闭连接
+                if (exSocket.IsClosed)
+                {
+                    ResetSAEAObject(ioEventArgs);
                 }
             }
         }
@@ -530,14 +552,14 @@ namespace ZyGames.Framework.RPC.Sockets
                 {
                     TraceLog.WriteError("OnDisconnected error:{0}", ex);
                 }
-                ioEventArgs.AcceptSocket.Close();
+                ResetSAEAObject(ioEventArgs);
             }
             ReleaseIOEventArgs(ioEventArgs);
         }
 
         private void HandleBadAccept(SocketAsyncEventArgs acceptEventArgs)
         {
-            acceptEventArgs.AcceptSocket.Close();
+            ResetSAEAObject(acceptEventArgs);
             acceptEventArgs.AcceptSocket = null;
             acceptEventArgsPool.Push(acceptEventArgs);
             maxConnectionsEnforcer.Release();
@@ -562,8 +584,7 @@ namespace ZyGames.Framework.RPC.Sockets
         /// </summary>
         public void Close()
         {
-            listenSocket.Close();
-
+            _isStart = false;
             lock (clientSockets)
             {
                 foreach (var socket in clientSockets)
@@ -574,6 +595,7 @@ namespace ZyGames.Framework.RPC.Sockets
 
             while (clientSockets.Count != 0) Thread.Sleep(10);
             DisposeAllSaeaObjects();
+            listenSocket.Close();
         }
 
         private void DisposeAllSaeaObjects()
@@ -582,13 +604,28 @@ namespace ZyGames.Framework.RPC.Sockets
             while (this.acceptEventArgsPool.Count > 0)
             {
                 eventArgs = acceptEventArgsPool.Pop();
-                eventArgs.Dispose();
+                ResetSAEAObject(eventArgs);
             }
             while (this.ioEventArgsPool.Count > 0)
             {
                 eventArgs = ioEventArgsPool.Pop();
-                eventArgs.Dispose();
+                ResetSAEAObject(eventArgs);
             }
+        }
+
+        private static void ResetSAEAObject(SocketAsyncEventArgs eventArgs)
+        {
+            try
+            {
+                if (eventArgs.AcceptSocket != null)
+                {
+                    eventArgs.AcceptSocket.Close();
+                }
+            }
+            catch (Exception)
+            {
+            }
+            eventArgs.AcceptSocket = null;
         }
     }
 }

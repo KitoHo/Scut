@@ -22,8 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
 using System;
+using System.Collections.Generic;
 using System.Data;
-using System.Text;
 using ZyGames.Framework.Common;
 using ZyGames.Framework.Common.Log;
 using ZyGames.Framework.Common.Serialization;
@@ -39,22 +39,44 @@ namespace ZyGames.Framework.Net.Sql
             Send(new T[] { data }, isChange, null, null);
         }
 
-        public void Send<T>(T[] dataList) where T : AbstractEntity
+        public void Send<T>(IEnumerable<T> dataList) where T : AbstractEntity
         {
             Send(dataList, true, null, null);
         }
 
-        public void Send<T>(T[] dataList, bool isChange) where T : AbstractEntity
+        public void Send<T>(IEnumerable<T> dataList, bool isChange) where T : AbstractEntity
         {
             Send(dataList, isChange, null, null);
         }
 
-        public void Send<T>(T[] dataList, bool isChange, string connectKey, EntityBeforeProcess handle) where T : AbstractEntity
+        public void Send<T>(IEnumerable<T> dataList, bool isChange, string connectKey, EntityBeforeProcess handle) where T : AbstractEntity
         {
             foreach (var data in dataList)
             {
                 UpdateToDb(data, isChange, connectKey, handle);
             }
+        }
+
+        /// <summary>
+        /// Generate sql statement
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="data"></param>
+        /// <returns></returns>
+        internal SqlStatement GenerateSqlQueue<T>(T data) where T : AbstractEntity
+        {
+            SchemaTable schemaTable = data.GetSchema();
+            DbBaseProvider dbProvider = DbConnectionProvider.CreateDbProvider(schemaTable.ConnectKey);
+            if (dbProvider != null)
+            {
+                CommandStruct command = GenerateCommand(dbProvider, data, schemaTable, false, null);
+                if (command != null)
+                {
+                    int identityId = data.GetIdentityId();
+                    return dbProvider.GenerateSql(identityId, command);
+                }
+            }
+            return null;
         }
 
         public void Dispose()
@@ -68,40 +90,48 @@ namespace ZyGames.Framework.Net.Sql
             {
                 return;
             }
-
             SchemaTable schemaTable = data.GetSchema();
-            if (!schemaTable.IsStoreInDb ||
-                (string.IsNullOrEmpty(schemaTable.ConnectKey) &&
-                    string.IsNullOrEmpty(schemaTable.ConnectionString)))
+            DbBaseProvider dbProvider = DbConnectionProvider.CreateDbProvider(connectKey ?? schemaTable.ConnectKey);
+            if (dbProvider == null)
             {
                 return;
+            }
+            CommandStruct command = GenerateCommand(dbProvider, data, schemaTable, isChange, handle);
+            if (command != null)
+            {
+                dbProvider.ExecuteNonQuery(data.GetIdentityId(), CommandType.Text, command.Sql, command.Parameters);
+                data.OnUnNew();
+            }
+        }
+
+        private CommandStruct GenerateCommand<T>(DbBaseProvider dbProvider, T data, SchemaTable schemaTable, bool isChange, EntityBeforeProcess handle) where T : AbstractEntity
+        {
+            CommandStruct command = null;
+            if (!schemaTable.IsStoreInDb ||
+                (string.IsNullOrEmpty(schemaTable.ConnectKey) &&
+                 string.IsNullOrEmpty(schemaTable.ConnectionString)))
+            {
+                return null;
             }
 
             string[] columns = GetColumns(schemaTable, data, isChange);
             if (columns == null || columns.Length == 0)
             {
                 TraceLog.WriteError("Class:{0} is not change column.", data.GetType().FullName);
-                return;
+                return null;
             }
-
-            DbBaseProvider dbProvider = DbConnectionProvider.CreateDbProvider(connectKey ?? schemaTable.ConnectKey);
-            if (dbProvider == null)
-            {
-                //TraceLog.WriteError("DbBaseProvider:{0} is null.", (connectKey ?? schemaTable.ConnectKey));
-                return;
-            }
-            CommandStruct command = null;
+            string tableName = schemaTable.GetTableName();
             if (data.IsDelete)
             {
-                command = dbProvider.CreateCommandStruct(schemaTable.Name, CommandMode.Delete);
+                command = dbProvider.CreateCommandStruct(tableName, CommandMode.Delete);
             }
             else if (schemaTable.AccessLevel == AccessLevel.WriteOnly)
             {
-                command = dbProvider.CreateCommandStruct(schemaTable.Name, CommandMode.Insert);
+                command = dbProvider.CreateCommandStruct(tableName, CommandMode.Insert);
             }
             else
             {
-                command = dbProvider.CreateCommandStruct(schemaTable.Name, CommandMode.ModifyInsert);
+                command = dbProvider.CreateCommandStruct(tableName, CommandMode.ModifyInsert);
             }
             //StringBuilder changeLog = new StringBuilder();
             //changeLog.AppendFormat("\"Keys\":\"{0}\"", data.GetKeyCode());
@@ -135,7 +165,7 @@ namespace ZyGames.Framework.Net.Sql
             string[] keyList = schemaTable.Keys;
             if (keyList.Length == 0)
             {
-                throw new ArgumentNullException(string.Format("Table:{0} key is empty.", schemaTable.Name));
+                throw new ArgumentNullException(string.Format("Table:{0} key is empty.", schemaTable.EntityName));
             }
             string condition = string.Empty;
             command.Filter = dbProvider.CreateCommandFilter();
@@ -168,12 +198,7 @@ namespace ZyGames.Framework.Net.Sql
             }
             command.Filter.Condition = condition;
             command.Parser();
-            //if (schemaTable.AccessLevel == AccessLevel.ReadWrite)
-            //{
-            //    TraceLog.ReleaseWriteDebug("Update change \"{0}\" data:{1}", data.GetType().FullName, changeLog.ToString());
-            //}
-            dbProvider.ExecuteNonQuery(data.GetIdentityId(), CommandType.Text, command.Sql, command.Parameters);
-            data.OnUnNew();
+            return command;
         }
 
         private static IDataParameter CreateParameter(DbBaseProvider dbProvider, string columnName, ColumnDbType dbType, object value)
@@ -184,8 +209,17 @@ namespace ZyGames.Framework.Net.Sql
                 case ColumnDbType.UniqueIdentifier:
                     parameter = dbProvider.CreateParameterByGuid(columnName, (Guid)value);
                     break;
+                case ColumnDbType.LongText:
+                    parameter = dbProvider.CreateParameterByLongText(columnName, value);
+                    break;
                 case ColumnDbType.Text:
                     parameter = dbProvider.CreateParameterByText(columnName, value);
+                    break;
+                case ColumnDbType.LongBlob:
+                    parameter = dbProvider.CreateParameterLongBlob(columnName, value);
+                    break;
+                case ColumnDbType.Blob:
+                    parameter = dbProvider.CreateParameterByBlob(columnName, value);
                     break;
                 default:
                     parameter = dbProvider.CreateParameter(columnName, value);
@@ -224,31 +258,61 @@ namespace ZyGames.Framework.Net.Sql
             }
 
             //序列化Json
-            if (schemaColumn.IsJson)
+            if (schemaColumn.IsSerialized)
             {
-                try
+                if (schemaColumn.DbType == ColumnDbType.LongBlob || schemaColumn.DbType == ColumnDbType.Blob)
                 {
-                    value = value ?? string.Empty;
-                    if (!string.IsNullOrEmpty(schemaColumn.JsonDateTimeFormat))
-                    {
-                        value = JsonUtils.SerializeCustom(value);
-                    }
-                    else
-                    {
-                        value = JsonUtils.Serialize(value);
-                    }
-
+                    value = SerializeBinaryObject(schemaTable, schemaColumn, value);
                 }
-                catch (Exception ex)
+                else
                 {
-                    TraceLog.WriteError("Table:{0} column:\"{0}\" json serialize error:\r\n:{1}",
-                        schemaTable.Name,
-                        schemaColumn.Name,
-                        ex);
-                    return false;
+                    value = SerializeJson(schemaTable, schemaColumn, value);
                 }
+                if (value == null) return false;
             }
             return true;
+        }
+
+        private static object SerializeBinaryObject(SchemaTable schemaTable, SchemaColumn schemaColumn, object value)
+        {
+            try
+            {
+                value = ProtoBufUtils.Serialize(value);
+            }
+            catch (Exception ex)
+            {
+                TraceLog.WriteError("Table:{0} column:\"{0}\" serialize error:\r\n:{1}",
+                    schemaTable.EntityName,
+                    schemaColumn.Name,
+                    ex);
+                return null;
+            }
+            return value;
+        }
+
+        private static object SerializeJson(SchemaTable schemaTable, SchemaColumn schemaColumn, object value)
+        {
+            try
+            {
+                value = value ?? string.Empty;
+                if (!string.IsNullOrEmpty(schemaColumn.JsonDateTimeFormat))
+                {
+                    value = JsonUtils.SerializeCustom(value);
+                }
+                else
+                {
+                    value = JsonUtils.Serialize(value);
+                }
+            }
+            catch (Exception ex)
+            {
+                TraceLog.WriteError("Table:{0} column:\"{0}\" json serialize error:\r\n:{1}",
+                    schemaTable.EntityName,
+                    schemaColumn.Name,
+                    ex);
+                return null;
+            }
+            return value;
         }
     }
 }

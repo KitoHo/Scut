@@ -63,21 +63,19 @@ namespace ZyGames.Framework.Game.Service
             }
             set { _userId = value; }
         }
-        /// <summary>
-        /// User创建工厂
-        /// </summary>
-        public Func<int, BaseUser> UserFactory { get; set; }
 
         /// <summary>
-        /// 当前游戏上下文对象
+        /// 当前游戏会话
         /// </summary>
-        public GameContext Current { get; private set; }
+        public GameSession Current { get; private set; }
 
         /// <summary>
-        /// url分解器
+        /// 兼容子类变量名
         /// </summary>
-        protected HttpGet httpGet;
-
+        protected ActionGetter httpGet
+        {
+            get { return actionGetter; }
+        }
         /// <summary>
         /// 是否是压力测试
         /// </summary>
@@ -85,7 +83,7 @@ namespace ZyGames.Framework.Game.Service
         {
             get
             {
-                return CheckRunloader(httpGet);
+                return CheckRunloader(actionGetter);
             }
         }
         /// <summary>
@@ -101,23 +99,23 @@ namespace ZyGames.Framework.Game.Service
         /// <summary>
         /// 
         /// </summary>
-        /// <param name="httpGet"></param>
+        /// <param name="actionGetter"></param>
         /// <returns></returns>
-        public static bool CheckRunloader(HttpGet httpGet)
+        public static bool CheckRunloader(ActionGetter actionGetter)
         {
-            return !IsRealse && httpGet.ContainsKey("rl");
+            return !IsRealse && actionGetter.IsRunloader();
         }
 
         /// <summary>
         /// 构造函数
         /// </summary>
         /// <param name="aActionId"></param>
-        /// <param name="httpGet"></param>
-        protected BaseStruct(short aActionId, HttpGet httpGet) :
+        /// <param name="actionGetter"></param>
+        protected BaseStruct(int aActionId, ActionGetter actionGetter) :
             base(aActionId)
         {
             actionId = aActionId;
-            this.httpGet = httpGet;
+            this.actionGetter = actionGetter;
         }
 
         /// <summary>
@@ -132,32 +130,28 @@ namespace ZyGames.Framework.Game.Service
         /// </summary>
         public void DoInit()
         {
-            Uid = "0";
-            httpGet.GetString("uid", ref Uid);
-            httpGet.GetInt("uid", ref _userId);
+            _userId = actionGetter.GetUserId();
+            Uid = _userId.ToString();
 
             if (!IsPush)
             {
-                httpGet.GetInt("MsgId", ref MsgId);
+                MsgId = actionGetter.GetMsgId();
             }
-            string st = httpGet.GetStringValue("St");
+            string st = actionGetter.GetSt();
             if (!string.IsNullOrEmpty(st))
             {
                 St = st;
             }
-            InitContext(httpGet.SessionId, actionId, UserId);
+            Sid = actionGetter.GetSessionId();
+            Current = GameSession.Get(Sid);
+            if (Current == null)
+            {
+                Current = GameSession.Get(_userId);
+            }
             InitAction();
             InitChildAction();
         }
 
-        private void InitContext(string sessionId, int actionId, int userId)
-        {
-            Current = GameContext.GetInstance(sessionId, actionId, userId);
-            if (UserFactory != null)
-            {
-                Current.User = UserFactory(userId);
-            }
-        }
         /// <summary>
         /// 
         /// </summary>
@@ -165,8 +159,8 @@ namespace ZyGames.Framework.Game.Service
         public ILocking RequestLock()
         {
             ILocking strategy = null;
-            strategy = Current.MonitorLock.Lock();
-            if (strategy == null || !strategy.TryEnterLock())
+            if (Current != null) strategy = Current.MonitorLock.Lock();
+            if (strategy != null && !strategy.TryEnterLock())
             {
                 ErrorCode = Language.Instance.ErrorCode;
                 if (!IsRealse) ErrorInfo = Language.Instance.ServerBusy;
@@ -210,10 +204,6 @@ namespace ZyGames.Framework.Game.Service
                     return false;
                 }
                 result = TakeAction();
-                if (Current != null && Current.UserId == 0 && UserId > 0)
-                {
-                    Current.SetValue(UserId);
-                }
                 TakeActionAffter(result);
             }
             catch (Exception ex)
@@ -237,7 +227,6 @@ namespace ZyGames.Framework.Game.Service
         {
             //调整加锁位置
             bool result = false;
-            httpGet.GetString("Sid", ref Sid);
             if (GetUrlElement())
             {
                 if (ValidateElement())
@@ -260,11 +249,20 @@ namespace ZyGames.Framework.Game.Service
                     ErrorCode = Language.Instance.ErrorCode;
                     if (!IsRealse)
                     {
-                        ErrorInfo = Language.Instance.UrlElement + httpGet.ErrorMsg;
+                        ErrorInfo = Language.Instance.UrlElement;
                     }
                 }
             }
             return result;
+        }
+
+        /// <summary>
+        /// get url parameter
+        /// </summary>
+        /// <returns></returns>
+        public override bool GetUrlElement()
+        {
+            return true;
         }
         /// <summary>
         /// 

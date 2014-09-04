@@ -21,12 +21,8 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using ZyGames.Framework.Common;
-using ZyGames.Framework.Game.Com;
+
+using ZyGames.Framework.Common.Log;
 using ZyGames.Framework.Game.Com.Generic;
 using ZyGames.Framework.Game.Context;
 using ZyGames.Framework.Game.Lang;
@@ -43,10 +39,10 @@ namespace ZyGames.Framework.Game.Contract.Action
         /// <summary>
         /// Initializes a new instance of the <see cref="ZyGames.Framework.Game.Contract.Action.AuthorizeAction"/> class.
         /// </summary>
-        /// <param name="actionID">Action I.</param>
-        /// <param name="httpGet">Http get.</param>
-        protected AuthorizeAction(short actionID, HttpGet httpGet)
-            : base(actionID, httpGet)
+        /// <param name="actionId">Action I.</param>
+        /// <param name="actionGetter">Http get.</param>
+        protected AuthorizeAction(int actionId, ActionGetter actionGetter)
+            : base(actionId, actionGetter)
         {
         }
 
@@ -76,8 +72,8 @@ namespace ZyGames.Framework.Game.Contract.Action
             {
                 return true;
             }
-            BaseUser gameUser;
-            LoginStatus status = CheckUser(Sid, UserId, out gameUser);
+            IUser user;
+            LoginStatus status = CheckUser(out user);
 
             if (IsRunLoader)
             {
@@ -86,26 +82,28 @@ namespace ZyGames.Framework.Game.Contract.Action
             switch (status)
             {
                 case LoginStatus.NoLogin:
+                case LoginStatus.Timeout:
                     ErrorCode = Language.Instance.TimeoutCode;
                     ErrorInfo = Language.Instance.AcountNoLogin;
                     result = false;
                     break;
                 case LoginStatus.Logined:
-                    ErrorCode = Language.Instance.TimeoutCode;
+                    ErrorCode = Language.Instance.DuplicateCode;
                     ErrorInfo = Language.Instance.AcountLogined;
                     result = false;
                     break;
+                case LoginStatus.Exit:
+                    ErrorCode = Language.Instance.KickedOutCode;
+                    ErrorInfo = Language.Instance.AcountIsLocked;
+                    result = false;
+                    break;
                 case LoginStatus.Success:
-                    if (Current != null)
-                    {
-                        Current.User = gameUser;
-                    }
                     result = true;
                     break;
                 default:
                     break;
             }
-            if (gameUser != null && gameUser.IsFengJinStatus)
+            if (user != null && user.IsLock)
             {
                 ErrorCode = Language.Instance.TimeoutCode;
                 ErrorInfo = Language.Instance.AcountIsLocked;
@@ -113,7 +111,7 @@ namespace ZyGames.Framework.Game.Contract.Action
             }
             if (result && IsRefresh)
             {
-                DoRefresh(actionId, gameUser);
+                DoRefresh(actionId, user);
             }
             return result;
         }
@@ -128,31 +126,29 @@ namespace ZyGames.Framework.Game.Contract.Action
         /// <summary>
         /// 不检查的ActionID
         /// </summary>
-        protected abstract bool IgnoreActionId
+        protected virtual bool IgnoreActionId
         {
-            get;
+            get { return false; }
         }
+
         /// <summary>
         /// Checks the user.
         /// </summary>
         /// <returns>The user.</returns>
-        /// <param name="sessionID">Session I.</param>
-        /// <param name="userId">User identifier.</param>
-        /// <param name="gameUser">Game user.</param>
-        protected LoginStatus CheckUser(string sessionID, int userId, out BaseUser gameUser)
+        /// <param name="user">Game user.</param>
+        protected LoginStatus CheckUser(out IUser user)
         {
-            gameUser = null;
-            if (UserFactory != null)
+            user = null;
+            if (Current != null)
             {
-                gameUser = UserFactory(userId);
-                if (gameUser != null)
-                {
-                    var session = GameSession.Get(userId);
-                    if (session != null)
-                    {
-                        return session.SessionId == sessionID ? LoginStatus.Success : LoginStatus.Logined;
-                    }
-                }
+                user = Current.User;
+                return Current.IsAuthorized
+                    ? LoginStatus.Success
+                    : Current.IsTimeout
+                        ? LoginStatus.Timeout
+                        : string.IsNullOrEmpty(Current.OldSessionId)
+                            ? LoginStatus.NoLogin
+                            : LoginStatus.Logined;
             }
             return LoginStatus.NoLogin;
         }
@@ -161,7 +157,7 @@ namespace ZyGames.Framework.Game.Contract.Action
         /// </summary>
         /// <param name="actionId">Action identifier.</param>
         /// <param name="gameUser">Game user.</param>
-        protected void DoRefresh(int actionId, BaseUser gameUser)
+        protected void DoRefresh(int actionId, IUser gameUser)
         {
             if (EnablePayNotify != null)
             {

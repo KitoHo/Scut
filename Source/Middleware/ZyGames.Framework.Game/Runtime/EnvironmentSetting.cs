@@ -29,14 +29,21 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
+using Microsoft.Scripting.Hosting;
+using ServiceStack.Text;
 using ZyGames.Framework.Cache.Generic;
 using ZyGames.Framework.Common.Configuration;
+using ZyGames.Framework.Common.Log;
+using ZyGames.Framework.Common.Serialization;
+using ZyGames.Framework.Game.Contract;
+using ZyGames.Framework.Script;
 
 namespace ZyGames.Framework.Game.Runtime
 {
     /// <summary>
     /// The environment configuration information.
     /// </summary>
+    [Serializable]
     public class EnvironmentSetting
     {
         private static readonly string productDesEnKey;
@@ -55,6 +62,10 @@ namespace ZyGames.Framework.Game.Runtime
         private static readonly int actionGZipOutLength;
         private static readonly string actionTypeName;
         private static readonly string scriptTypeName;
+        private static readonly string entityAssemblyName;
+        private static readonly string decodeFuncTypeName;
+        private static readonly string remoteTypeName;
+        private static ICacheSerializer serializer;
 
         static EnvironmentSetting()
         {
@@ -81,13 +92,32 @@ namespace ZyGames.Framework.Game.Runtime
             actionTypeName = ConfigUtils.GetSetting("Game.Action.TypeName");
             if (string.IsNullOrEmpty(actionTypeName))
             {
-                string assemblyName = ConfigUtils.GetSetting("Game.Action.AssemblyName");
+                string assemblyName = ConfigUtils.GetSetting("Game.Action.AssemblyName", "GameServer.CsScript");
                 if (!string.IsNullOrEmpty(assemblyName))
                 {
                     actionTypeName = assemblyName + ".Action.Action{0}," + assemblyName;
                 }
             }
             scriptTypeName = ConfigUtils.GetSetting("Game.Action.Script.TypeName", "Game.Script.Action{0}");
+            entityAssemblyName = ConfigUtils.GetSetting("Game.Entity.AssemblyName");
+            decodeFuncTypeName = ConfigUtils.GetSetting("Game.Script.DecodeFunc.TypeName", "");
+
+            remoteTypeName = ConfigUtils.GetSetting("Game.Remote.Script.TypeName", "Game.Script.Remote.{0}");
+            LoadDecodeFunc();
+            InitSerializer();
+        }
+
+        private static void InitSerializer()
+        {
+            string type = ConfigUtils.GetSetting("Cache.Serializer", "Protobuf");
+            if (string.Equals(type, "json", StringComparison.OrdinalIgnoreCase))
+            {
+                serializer = new JsonCacheSerializer(Encoding.UTF8);
+            }
+            else
+            {
+                serializer = new ProtobufCacheSerializer();
+            }
         }
 
         private static string GetLocalIp()
@@ -117,7 +147,7 @@ namespace ZyGames.Framework.Game.Runtime
             ProductServerId = productServerId;
             CacheGlobalPeriod = cacheGlobalPeriod;
             CacheUserPeriod = cacheUserPeriod;
-            
+
             ScriptSysAsmReferences = scriptSysAsmReferences;
             ScriptAsmReferences = scriptAsmReferences;
             ActionEnableGZip = enableActionGZip;
@@ -126,8 +156,46 @@ namespace ZyGames.Framework.Game.Runtime
             GameIpAddress = gameIpAddress;
             ActionTypeName = actionTypeName;
             ScriptTypeName = scriptTypeName;
+            RemoteTypeName = remoteTypeName;
+            try
+            {
+                if (!string.IsNullOrEmpty(entityAssemblyName))
+                {
+                    EntityAssembly = Assembly.LoadFrom(entityAssemblyName);
+                }
+            }
+            catch (Exception ex)
+            {
+                TraceLog.WriteError("Load entity assembly error:\"{0}\" {1}", entityAssemblyName, ex);
+            }
+            ActionDispatcher = new ScutActionDispatcher();
+            Serializer = serializer;
         }
-        
+
+        private static dynamic _scriptDecodeTarget;
+        private static void LoadDecodeFunc()
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(decodeFuncTypeName)) return;
+                var type = Type.GetType(decodeFuncTypeName, true, true);
+                _scriptDecodeTarget = type.CreateInstance();
+                ScriptEngines.SettupInfo.DecodeCallback += DecodeCallback;
+            }
+            catch (Exception ex)
+            {
+                TraceLog.WriteError("Load DecodeFunc type error:\"{0}\" {1}", decodeFuncTypeName, ex);
+            }
+        }
+
+        private static string DecodeCallback(string source, string ext)
+        {
+            if (_scriptDecodeTarget == null)
+                return "";
+            return _scriptDecodeTarget.DecodeCallback(source, ext);
+        }
+
+
         /// <summary>
         /// Request signature key.
         /// </summary>
@@ -167,7 +235,7 @@ namespace ZyGames.Framework.Game.Runtime
         /// Product server id.
         /// </summary>
         public int ProductServerId { get; set; }
-        
+
         /// <summary>
         /// The entity assembly.
         /// </summary>
@@ -204,6 +272,10 @@ namespace ZyGames.Framework.Game.Runtime
         public string ScriptTypeName { get; set; }
 
         /// <summary>
+        /// Remote type name.
+        /// </summary>
+        public string RemoteTypeName { get; set; }
+        /// <summary>
         /// local ip
         /// </summary>
         public string GameIpAddress
@@ -221,6 +293,12 @@ namespace ZyGames.Framework.Game.Runtime
             private set;
         }
 
+        /// <summary>
+        /// Action repeater
+        /// </summary>
+        public IActionDispatcher ActionDispatcher { get; set; }
+
+        public ICacheSerializer Serializer { get; set; }
         ///// <summary>
         ///// Before starting the script engine process.
         ///// </summary>

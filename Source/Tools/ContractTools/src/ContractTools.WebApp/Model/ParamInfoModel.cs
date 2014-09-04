@@ -81,7 +81,7 @@ namespace ContractTools.WebApp.Model
             set;
         }
         /// <summary>
-        /// 
+        /// 不使用,与Remark合并
         /// </summary>
         public string Descption
         {
@@ -163,5 +163,12 @@ namespace ContractTools.WebApp.Model
             get;
             set;
         }
+        
+        public int VerID
+        {
+            get;
+            set;
+        }
+
     }
 }

@@ -21,10 +21,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ****************************************************************************/
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+
 using ZyGames.Framework.Common.Log;
 using ZyGames.Framework.Game.Pay;
 using ZyGames.Framework.Game.Service;
@@ -47,7 +44,7 @@ namespace ZyGames.Framework.Game.Contract.Action
 		/// </summary>
 		/// <param name="aActionId">A action identifier.</param>
 		/// <param name="httpGet">Http get.</param>
-        public Sdk91PayAction(short aActionId, HttpGet httpGet)
+        public Sdk91PayAction(short aActionId, ActionGetter httpGet)
             : base(aActionId, httpGet)
         {
         }
@@ -64,13 +61,13 @@ namespace ZyGames.Framework.Game.Contract.Action
         public override bool GetUrlElement()
         {
             TraceLog.ReleaseWriteFatal("url");
-            if (httpGet.GetString("OrderID", ref OrderID)
-                && httpGet.GetInt("gameID", ref gameID)
-                && httpGet.GetInt("Server", ref serviceID)
-                && httpGet.GetString("ServiceName", ref servicename)
-                && httpGet.GetString("PassportID", ref passportId))
+            if (actionGetter.GetString("OrderID", ref OrderID)
+                && actionGetter.GetInt("gameID", ref gameID)
+                && actionGetter.GetInt("Server", ref serviceID)
+                && actionGetter.GetString("ServiceName", ref servicename)
+                && actionGetter.GetString("PassportID", ref passportId))
             {
-                httpGet.GetString("RetailID", ref _RetailID);
+                actionGetter.GetString("RetailID", ref _RetailID);
                 return true;
             }
             return false;

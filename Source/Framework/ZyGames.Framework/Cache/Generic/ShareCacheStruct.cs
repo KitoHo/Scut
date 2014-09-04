@@ -23,7 +23,6 @@ THE SOFTWARE.
 ****************************************************************************/
 using System;
 using System.Collections.Generic;
-using ZyGames.Framework.Collection.Generic;
 using ZyGames.Framework.Common;
 using ZyGames.Framework.Common.Log;
 using ZyGames.Framework.Model;
@@ -42,7 +41,15 @@ namespace ZyGames.Framework.Cache.Generic
         public ShareCacheStruct()
         {
         }
-        
+
+        /// <summary>
+        /// Get loading status from redis or DB
+        /// </summary>
+        public LoadingStatus LoadingStatus
+        {
+            get { return DataContainer.LoadStatus; }
+        }
+
         /// <summary>
         /// 遍历数据
         /// </summary>
@@ -215,10 +222,8 @@ namespace ZyGames.Framework.Cache.Generic
             return TryRemove(key, item =>
             {
                 value.OnDelete();
-                var groupList = new GroupList<string, T>();
-                groupList.TryAdd(key, value);
                 TransSendParam sendParam = new TransSendParam() { IsChange = true };
-                DoSend(groupList, sendParam);
+                DoSend(new[] { new KeyValuePair<string, T>(key, value) }, sendParam);
                 return true;
             });
         }
